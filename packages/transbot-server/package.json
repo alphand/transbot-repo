@@ -1,0 +1,23 @@
+{
+  "name": "transbot-server",
+  "version": "0.0.1",
+  "description": "Transbot Server",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/main.js --exec babel-node",
+    "build": "babel src -d dist",
+    "serve": "node dist/main.js",
+    "prod": "npm run build && npm run serve",
+    "test": "mocha --compilers js:babel-register"
+  },
+  "author": "Niko Darmawan <darmawan.niko@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "babel-cli": "^6.10.1",
+    "babel-core": "^6.9.1",
+    "babel-preset-es2015": "^6.9.0",
+    "babel-preset-stage-2": "^6.5.0",
+    "mocha": "^2.5.3",
+    "nodemon": "^1.9.2"
+  }
+}
