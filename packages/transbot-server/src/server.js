@@ -6,13 +6,14 @@ import logger from 'morgan'
 import helmet from 'helmet'
 import Router from './routes'
 
-const app = express();
-const env = process.env.NODE_ENV || 'dev';
+const app = express()
+const env = process.env.NODE_ENV || 'development';
 
 app.use(helmet())
 app.set('port', process.env.PORT || 3030)
+app.set('env', env)
 app.use(compression())
-app.use(logger(env))
+app.use(logger(/dev/gi.test(env)? 'dev':'common'))
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({extended:true}))
 

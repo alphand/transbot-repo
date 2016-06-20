@@ -1,2 +1,3 @@
-require('babel-core/register')
-require('./server.js')
+require('dotenv').config();
+require('babel-core/register');
+require('./server.js');
