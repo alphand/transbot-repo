@@ -1,8 +1,31 @@
-import http from 'http';
+import express from 'express'
+import compression from 'compression'
+import bodyParser from 'body-parser'
+import errorhandler from 'errorhandler'
+import logger from 'morgan'
+import helmet from 'helmet'
+import Router from './routes'
 
-http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('Hello World\n');
-}).listen(1337, '127.0.0.1');
+const app = express();
+const env = process.env.NODE_ENV || 'dev';
 
-console.log('Server running at http://127.0.0.1:1337/');
+app.use(helmet())
+app.set('port', process.env.PORT || 3030)
+app.use(compression())
+app.use(logger(env))
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({extended:true}))
+
+app.use('/', Router.Home);
+
+/**
+ * Error Handler.
+ */
+app.use(errorhandler());
+
+/**
+ * Start Express server.
+ */
+app.listen(app.get('port'), () => {
+  console.log('Express server listening on port %d in %s mode', app.get('port'), app.get('env'));
+});
