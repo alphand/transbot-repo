@@ -1,5 +1,6 @@
 import home from './home'
-
+import fbwebhook from './fbwebhook'
 export default {
-  Home:home
+  Home:home,
+  FBWebhook: fbwebhook
 }

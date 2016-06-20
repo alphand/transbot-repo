@@ -17,6 +17,7 @@ app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({extended:true}))
 
 app.use('/', Router.Home);
+app.use('/webhook', Router.FBWebhook);
 
 /**
  * Error Handler.
