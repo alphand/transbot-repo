@@ -2,6 +2,8 @@ import express from 'express'
 import oauth2 from 'simple-oauth2'
 import GTFSBindings from 'gtfs-realtime-bindings'
 import request from 'request'
+import yauzl from 'yauzl'
+import fs from 'fs'
 
 const CLIENTID = process.env.TFNSW_CLIENTID;
 const SECRET = process.env.TFNSW_SECRET;
@@ -16,6 +18,29 @@ const oauth2Instance = oauth2({
   useBasicAuthorizationHeader: true,
   useBodyAuth: false
 })
+
+function getGTFSStaticData(token, res) {
+  const requestSettings = {
+    method: 'GET',
+    url: 'https://api.transport.nsw.gov.au/v1/publictransport/timetables/complete/gtfs',
+    encoding: null,
+    'auth': {
+        'bearer': token
+    }
+  }
+
+  return new Promise((resolve, reject) =>{
+    request.get(requestSettings)
+      .pipe(res)
+      // .pipe(fs.createWriteStream('./tmp/tfnsw.zip'))
+      // .on('close', () => {
+      //   console.log('complete', arguments);
+      //   // if(err) return reject(err)
+      //   // console.log(res);
+      //   return reject('Testing phase');
+      // })
+  })
+}
 
 function getAccessToken(){
   return new Promise((resolve, reject) => {
@@ -45,7 +70,6 @@ function getGTFSData(token, endpoint, type) {
   return new Promise((resolve, reject) =>{
     request.get(requestSettings, (err, res, body) => {
       if(err) return reject(err)
-      console.log('raw data', body);
       const feed = GTFSBindings.FeedMessage.decode(body)
       return resolve(feed)
     })
@@ -85,6 +109,23 @@ function processGTFSResult(data){
 //     res.status(400).send(err);
 //   })
 // })
+
+route.get('/update', (req, res) => {
+  let feedData;
+  getAccessToken()
+    .then((token) => {
+      return getGTFSStaticData(token, res)
+    })
+    .then((feed) => {
+      console.log('done');
+      // res.type('plain/text')
+      // res.status(200).send('updating')
+    })
+    .catch((err)=>{
+      console.log('TFNSW Error:', err);
+      res.status(400).send(err);
+    })
+})
 
 route.get('/:endpoint/:type', (req, res) => {
   let feedData;

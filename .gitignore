@@ -1,3 +1,8 @@
 .env
 *.log
 node_modules
+tmp
+
+
+# Folder specific
+packages/transbot-importer/data
