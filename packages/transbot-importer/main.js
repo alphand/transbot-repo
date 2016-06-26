@@ -6,6 +6,7 @@ import del from 'del'
 import mkdirp from 'mkdirp'
 import csvparse from 'csv-parse'
 import transform from 'stream-transform'
+import models from './models'
 
 const TMP_PATH = './tmp'
 const MONGODB_CONN = 'mongodb://192.168.99.100/transbot-db'
@@ -64,21 +65,22 @@ function processFileList(fileList){
 
     fileList.map((file) => {
       console.log('processing file: '+ file)
-      if(/agency/.test(file)){
+      if(/agency|stops/.test(file)){
         mapPromise.push(readCSVFile(file))
-      } else {
+      }  else {
         mapPromise.push(Promise.resolve(true))
       }
-
-      return Promise.all(mapPromise);
     })
+
+    Promise.all(mapPromise)
+      .then(values => resolve(values))
+      .catch(err => reject(err))
   })
 }
 
 function connectMongo(){
   return new Promise((resolve, reject) => {
     const db = mongoose.connect(MONGODB_CONN).connection
-    console.log('initiating mongo')
     db.on('error', console.error.bind(console, 'connection error:'))
     db.on('open', () => {
       console.log('db connected')
@@ -87,41 +89,112 @@ function connectMongo(){
   })
 }
 
+function cleanUpCollections(){
+  function dropColl(collname){
+    return new Promise((resolve, reject) => {
+      const coll = mongoose.connection.collections[collname]
+      if(!coll) return resolve(true);
+
+      coll.drop((err)=>{
+        if(err) return reject(err);
+        console.info(collname + ' coll dropped')
+        resolve(true)
+      })
+    })
+  }
+
+  return new Promise((resolve, reject) => {
+    Promise.all([
+      dropColl('agencies'),
+      dropColl('stops')
+    ])
+    .then(values => {
+      console.log('drop all', values)
+      resolve(true)
+    })
+    .catch((err) =>{
+      if(err && err.errmsg === 'ns not found')
+        return resolve(true)
+
+      reject(err)
+    })
+  })
+}
+
 function readCSVFile(file){
   return new Promise((resolve, reject) => {
     console.log('read CSV file ', file)
+    let record;
+    let items = [];
+    let base = [];
     const parser = csvparse()
-    const transformer = transform((record, cb) => {
-      console.log('file: ', record)
-      cb(null, record+'')
-    } )
 
     const fileStream = fs.createReadStream(file);
-
     fileStream
       .pipe(parser)
-      .pipe(transformer)
 
-    // let records;
-    //
-    // fileStream.on('data',(chunk) => {
-    //   console.log('chunk', chunk)
-    //   records += chunk
-    // })
-    //
-    // fileStream.on('end', ()=>{
-    //   console.log('end recs', records)
-    //   resolve(records)
-    // })
+    parser.on('readable',() => {
+      while(record = parser.read()){
+        if (base.length === 0){
+          record.map(item => base.push(item))
+        }
+        else {
+          let obj = {}
+          let point_key = [];
+          base.map((key, idx) => {
+            obj[key] = record[idx]
+            if(/_(lat|lon)$/gi.test(key)){
+              point_key.push(key)
+            }
+          })
+
+          if(point_key.length > 0){
+            obj.loc = {
+              type:'Point',
+              coordinates: [ +obj[point_key[1]], +obj[point_key[0]]]
+            }
+          }
+          items.push(obj)
+        }
+      }
+    })
 
     parser.on('error', (err)=>{
-      console.log('parser err', err);
+      console.log('parser err', err)
+      reject(err)
+    })
+
+    parser.on('finish', () => {
+      console.log('parser ended', items[0])
+      resolve(items)
     })
 
     fileStream.on('end', () => {
-      console.log('transform ended')
+      parser.end()
     })
 
+  })
+}
+
+function insertToDB(agencyArr, stopsArr) {
+  const dataInsert = (model, dataArr) => {
+    return new Promise((resolve, reject) => {
+      function dataOnInsert(err, docs){
+        if(err) return reject(err);
+        console.log( model + ' inserted')
+        resolve(true)
+      }
+      models[model].collection.insert(dataArr, dataOnInsert)
+    })
+  }
+
+  return new Promise((resolve, reject) => {
+    Promise.all([
+      dataInsert('Agency', agencyArr),
+      dataInsert('Stop', stopsArr)
+    ])
+    .then(() => resolve(true))
+    .catch((err) => reject(err))
   })
 }
 
@@ -136,12 +209,21 @@ function readCSVFile(file){
     .then( values => {
       db = values[0];
       folderName = values[1];
-      return unzipData(folderName)
+      return Promise.all([
+        cleanUpCollections(),
+        unzipData(folderName)
+      ])
     })
-    .then((fileList) => {
-      return processFileList(fileList)
+    .then( values => {
+      return processFileList(values[1])
     })
-    .then(() => del(TMP_PATH + path.sep + 'data-*'))
+    .then( values => {
+      console.log('values after process', values.length)
+      return insertToDB(values[0], values[1])
+    })
+    .then(() =>{
+      return del(TMP_PATH + path.sep + 'data-*')
+    })
     .then(() => {
       console.log('folder deleted')
     })
