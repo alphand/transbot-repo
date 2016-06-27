@@ -4,6 +4,7 @@ import GTFSBindings from 'gtfs-realtime-bindings'
 import request from 'request'
 import yauzl from 'yauzl'
 import fs from 'fs'
+import _ from 'lodash'
 
 const CLIENTID = process.env.TFNSW_CLIENTID;
 const SECRET = process.env.TFNSW_SECRET;
@@ -57,7 +58,8 @@ function getAccessToken(){
   })
 }
 
-function getGTFSData(token, endpoint, type) {
+function getGTFSData(token, endpoint, type, subtype) {
+  type = (subtype)? type+'/'+subtype: type
   const requestSettings = {
     method: 'GET',
     url: `https://api.transport.nsw.gov.au/v1/gtfs/${endpoint}/${type}`,
@@ -66,6 +68,8 @@ function getGTFSData(token, endpoint, type) {
         'bearer': token
     }
   }
+
+  console.log('req url', requestSettings.url)
 
   return new Promise((resolve, reject) =>{
     request.get(requestSettings, (err, res, body) => {
@@ -127,11 +131,46 @@ route.get('/update', (req, res) => {
     })
 })
 
-route.get('/:endpoint/:type', (req, res) => {
+route.get('/realtime/:type', (req, res)=>{
+  let feedData;
+  const STOP_ID = req.query.stop_id
+  getAccessToken()
+    .then((token) => {
+      return getGTFSData(token, 'realtime', req.params.type, req.params.subtype)
+    })
+    .then((feed) => {
+      let list = [];
+      if(STOP_ID){
+        feed.entity.map((item)=>{
+          let stops = item.trip_update.stop_time_update.filter((stop) => {
+            return stop.stop_id === STOP_ID
+          })
+
+          let obj = {
+            vehicle: item.trip_update.vehicle,
+            trip: item.trip_update.trip,
+            stop_time_update: stops
+          };
+          if(stops.length > 0)
+            list.push(obj);
+        })
+      } else {
+        list = feed.entity
+      }
+      res.type('application/json')
+      res.status(200).send(list)
+    })
+    .catch((err)=>{
+      console.log('TFNSW Error:', err);
+      res.status(400).send(err);
+    })
+})
+
+route.get('/:endpoint/:type/:subtype*?', (req, res) => {
   let feedData;
   getAccessToken()
     .then((token) => {
-      return getGTFSData(token, req.params.endpoint, req.params.type)
+      return getGTFSData(token, req.params.endpoint, req.params.type, req.params.subtype)
     })
     .then((feed) => {
       res.type('application/json')
