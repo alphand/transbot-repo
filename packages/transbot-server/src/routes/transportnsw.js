@@ -4,6 +4,7 @@ import GTFSBindings from 'gtfs-realtime-bindings'
 import request from 'request'
 import yauzl from 'yauzl'
 import fs from 'fs'
+import path from 'path'
 import _ from 'lodash'
 
 const CLIENTID = process.env.TFNSW_CLIENTID;
@@ -74,9 +75,58 @@ function getGTFSData(token, endpoint, type, subtype) {
   return new Promise((resolve, reject) =>{
     request.get(requestSettings, (err, res, body) => {
       if(err) return reject(err)
-      const feed = GTFSBindings.FeedMessage.decode(body)
-      return resolve(feed)
+
+      const RESP_CONTENT_TYPE = res.headers['content-type']
+      const RESP_CONTENT_DISPOSITION = res.headers['content-disposition']
+
+      console.log('res headers', res.headers)
+
+      if(/x-google-protobuf/gi.test(RESP_CONTENT_TYPE)){
+        const feed = GTFSBindings.FeedMessage.decode(body)
+        return resolve(feed)
+      }
+      else {
+        return resolve(body)
+      }
     })
+  })
+}
+
+function createTempFolder(){
+  return new Promise((resolve, reject) => {
+    fs.mkdtemp(TMP_PATH + path.sep + 'data-', (err, res)=>{
+      if(err) return reject(err)
+      console.log('folder' + res)
+      return resolve(res)
+    })
+  })
+}
+
+function downloadGTFSData(token, endpoint, type, subtype) {
+  const requestSettings = {
+    method: 'GET',
+    url: `https://api.transport.nsw.gov.au/v1/gtfs/${endpoint}/${type}/${subtype}`,
+    encoding: null,
+    'auth': {
+        'bearer': token
+    }
+  }
+
+  console.log('download url', requestSettings.url)
+
+  return new Promise((resolve, reject) => {
+    let count = 0;
+    createTempFolder()
+      .then((folderName) =>{
+        request.get(requestSettings)
+          .on('end', () => resolve('done'))
+          .on('data',(chunk) => {
+            count += chunk.length
+            console.log('data', res)
+          })
+          .on('error', (err) => reject(err))
+          .pipe(fs.createWriteStream(folderName + path.sep + `${type}-${subtype}.zip`))
+      })
   })
 }
 
@@ -159,6 +209,19 @@ route.get('/realtime/:type', (req, res)=>{
       }
       res.type('application/json')
       res.status(200).send(list)
+    })
+    .catch((err)=>{
+      console.log('TFNSW Error:', err);
+      res.status(400).send(err);
+    })
+})
+
+route.get('/schedule/:type/:subtype', (req, res) => {
+  getAccessToken()
+    .then(token => downloadGTFSData(token, 'schedule', req.params.type, req.params.subtype))
+    .then((result) => {
+      res.type('application/json')
+      res.status(200).send(result)
     })
     .catch((err)=>{
       console.log('TFNSW Error:', err);

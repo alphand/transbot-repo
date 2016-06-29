@@ -65,7 +65,7 @@ function processFileList(fileList){
 
     fileList.map((file) => {
       console.log('processing file: '+ file)
-      if(/agency|stops/.test(file)){
+      if(/agency|stops|route|trip/.test(file)){
         mapPromise.push(readCSVFile(file))
       }  else {
         mapPromise.push(Promise.resolve(true))
@@ -93,6 +93,7 @@ function cleanUpCollections(){
   function dropColl(collname){
     return new Promise((resolve, reject) => {
       const coll = mongoose.connection.collections[collname]
+      // console.log('dropcoll prep:', coll);
       if(!coll) return resolve(true);
 
       coll.drop((err)=>{
@@ -106,7 +107,10 @@ function cleanUpCollections(){
   return new Promise((resolve, reject) => {
     Promise.all([
       dropColl('agencies'),
-      dropColl('stops')
+      dropColl('stops'),
+      dropColl('stoptime'),
+      dropColl('route'),
+      dropColl('trip'),
     ])
     .then(values => {
       console.log('drop all', values)
@@ -119,6 +123,9 @@ function cleanUpCollections(){
       reject(err)
     })
   })
+}
+
+function downloadCSV(path){
 }
 
 function readCSVFile(file){
@@ -165,7 +172,7 @@ function readCSVFile(file){
     })
 
     parser.on('finish', () => {
-      console.log('parser ended', items[0])
+      console.log('parser ended', file)
       resolve(items)
     })
 
@@ -176,11 +183,14 @@ function readCSVFile(file){
   })
 }
 
-function insertToDB(agencyArr, stopsArr) {
+function insertToDB(agencyArr, stopsArr, routeArr, tripArr) {
   const dataInsert = (model, dataArr) => {
     return new Promise((resolve, reject) => {
       function dataOnInsert(err, docs){
-        if(err) return reject(err);
+        if(err) {
+          console.log('insertion error', err, model, tripArr[0])
+          return reject(err);
+        }
         console.log( model + ' inserted')
         resolve(true)
       }
@@ -191,7 +201,9 @@ function insertToDB(agencyArr, stopsArr) {
   return new Promise((resolve, reject) => {
     Promise.all([
       dataInsert('Agency', agencyArr),
-      dataInsert('Stop', stopsArr)
+      dataInsert('Stop', stopsArr),
+      dataInsert('Route', routeArr),
+      dataInsert('Trip', tripArr)
     ])
     .then(() => resolve(true))
     .catch((err) => reject(err))
@@ -219,7 +231,10 @@ function insertToDB(agencyArr, stopsArr) {
     })
     .then( values => {
       console.log('values after process', values.length)
-      return insertToDB(values[0], values[1])
+      values.map((sglres)=>{
+        console.log('first value', sglres[0])
+      })
+      return insertToDB(values[0], values[1], values[2], values[6])
     })
     .then(() =>{
       return del(TMP_PATH + path.sep + 'data-*')
